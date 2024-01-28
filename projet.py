@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import gym
+import pandas as pd
 
 from torch.utils.data import DataLoader, TensorDataset, random_split
 from torch.utils.tensorboard import SummaryWriter
@@ -25,20 +26,58 @@ class Env(gym.Env): #ici il faut interagir avec l'environnement
 
 
         
-        def collect_data():
-                yahoo_financials = YahooFinancials('^DJI')
-                data=yahoo_financials.get_historical_price_data("1992-01-01", "2023-09-18", "daily")
-                prices = data['^DJI']['prices']
+        def collect_data(list_stock, date): #date = ["2010-06-28", "2010-07-05"]
+                                                #list_stock = ["^DJI", "TSLA", "AAPL", "MSFT", "GOOG", "AMZN"] c'est un exemple (j'ai vérifié que les données sont fiables et c'est resistant aux dates de week end)
+                print("starting collecting data from Yahoo")
+                yahoo_financials = YahooFinancials(list_stock)
+                data=yahoo_financials.get_historical_price_data(start_date = date[0], end_date = date[1], time_interval = "daily")
+                
+                print("data downloaded, let's process that!")
+                
+                data_for_df = {"Date": []}
+                all_dates = set()
+                
+                for stock in list_stock:
+                    data_for_df[stock] = []
+                    stock_data = data.get(stock, {}).get("prices", [])
+                    stock_data = stock_data[::-1]
+                    print(data_for_df)
+                    for record in stock_data:
+                        date = record.get("formatted_date")
+                        if date not in all_dates:
+                            all_dates.add(date)
+                            data_for_df["Date"].append(date)
+                        avg_price = (record['low']+ record['high'])/2
+                        print(record['low'])
+                        print(record['high'])
+                        data_for_df[stock].append(avg_price)
 
-                data = []
-                for price_data in prices:
-                        high_value = price_data['high']
-                        low_value = price_data['low']
-                        average = (high_value + low_value) / 2
-                        data.append(average)
 
-                return data
+                max_length = max(len(data_for_df["Date"]), max(len(data_for_df[stock]) for stock in list_stock))
+                for stock in list_stock:
+                      while len(data_for_df[stock]) < max_length:
+                            data_for_df[stock].append(np.nan)
+
+
+                df = pd.DataFrame(data_for_df)
+                df.set_index('Date', inplace=True)
+
+                racine_projet = os.getcwd() 
+                chemin_fichier_csv = os.path.join(racine_projet, 'nom_fichier.csv')
+
+                df.to_csv(chemin_fichier_csv, index=True)
+
+                print(df)
+                numpy_array = df.to_numpy()
+                print(numpy_array[0]) 
+
+                print("data collected")
+                return numpy_array #ca sort un numpy array ou les colonnes représentes les actifs et les lignes les dates, ca commence de la date la plus récente vers la plus ancienne
         
+        
+
+
+
         def process_data(self, counter, data, max_length, history): #make data start with t = max_length to make model be able to have env data
                 states = []
                 for i in range(max_length):
