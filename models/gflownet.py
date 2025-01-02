@@ -2,6 +2,12 @@ import torch
 import torch.nn as nn
 import torch.distributions as dist
 
+""" le modèle présenté est un effort pour former un gflownet continu, le mode de fonctionnement
+    consiste à générer séquentiellement des actions et de fournir le chemin des actions au modèle.
+    L'action est générée selon une distribution de Dirichlet. 
+"""
+
+
 class GFlowNet(nn.Module):
     def __init__(self, state_dim, action_dim):
         super().__init__(self)
@@ -52,6 +58,35 @@ class GFlowNet(nn.Module):
 
         #initialiser une matrice vide pour stocker les actions générées
         action_matrix = torch.zeros(batch_size, 0, action_dim)
-        
+
+        #liste pour stocker les log prob
+        log_probs_list = []
+
+        for _ in range(n_steps):
+            if action_matrix.size(1) == 0:
+                #si c'est la première itération, on crée une matrice d'action initiale vide
+                padded_action_matrix = torch.zeros(batch_size, 1, action_dim)
+            else:
+                #ajouter une dimension supplémentaire pour l'entrée
+                padded_action_matrix = action_matrix
+
+            #passer l'état et la matrice d'actions à travers le modèle pour obtenir les paramètres alpha
+            alpha = self.forward(state, padded_action_matrix)
+
+            #échantillonner une nouvelle action dans la distribution Dirichlet
+            dirichlet_dist = dist.Dirichlet(alpha)
+            new_action = dirichlet_dist.sample() # (batch_size, action_dim)
+
+            #calculer les log-probabilités des actions échantillonnées
+            log_probs = dirichlet_dist.log_prob(new_action) # (batch_size,)
+
+            #ajouter la nouvelle action à la matrice des actions
+            new_action = new_action.unsqueeze(1) # (batch_size, action_dim)
+            action_matrix = torch.cat([action_matrix, new_action], dim=1) # (batch_size, n_steps, action_dim)
+
+            #stocker les log prob
+            log_probs_list.append(log_probs)
+
+        return action_matrix, log_probs_list
 
 
