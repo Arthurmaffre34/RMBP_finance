@@ -9,11 +9,12 @@ import torch.distributions as dist
 
 
 class GFlowNet(nn.Module):
-    def __init__(self, state_dim, action_dim):
-        super().__init__(self)
+    def __init__(self, state_dim, action_dim, n_steps):
+        super().__init__()
         """
         Initialisation du GflowNet avec deux têtes et gestion des itérations.
         """
+        self.n_steps = n_steps #nombre d'action dans la séquence paramètre du modèle
 
         #embedding pour le vecteur d'état
         self.state_encoder = nn.Linear(state_dim, 128)
@@ -35,7 +36,7 @@ class GFlowNet(nn.Module):
         #encoder chaque ligne de la matrice d'actions
         batch_size, n_actions, alpha_dim = action_matrix.size()
         action_matrix_flat = action_matrix.view(-1, alpha_dim) # (batch_size * n_actions, alpha_dim)
-        encoded_actions = torch.relu(self.action_encoder(action_matrix_flat)) # (batch_size * n_actions, 128)
+        encoded_actions = torch.relu(self.action_matrix_encoder(action_matrix_flat)) # (batch_size * n_actions, 128)
         encoded_actions = encoded_actions.view(batch_size, n_actions, 128) # (batch_size, n_actions, 128)
 
         #combiner toutes les actions encodées par une moyenne
@@ -50,7 +51,7 @@ class GFlowNet(nn.Module):
 
         return alpha
     
-    def sample_action(self, state, n_steps, action_dim):
+    def sample_action(self, state, action_dim):
         """
         Génère un chemin complet d'actions séquentiellement
         """
@@ -62,7 +63,7 @@ class GFlowNet(nn.Module):
         #liste pour stocker les log prob
         log_probs_list = []
 
-        for _ in range(n_steps):
+        for _ in range(self.n_steps):
             if action_matrix.size(1) == 0:
                 #si c'est la première itération, on crée une matrice d'action initiale vide
                 padded_action_matrix = torch.zeros(batch_size, 1, action_dim)
